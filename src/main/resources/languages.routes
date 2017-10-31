@@ -1,0 +1,3 @@
+# Routes
+
+GET    /                   isabelle_remix.controllers.LanguagesController.list
