@@ -7,4 +7,4 @@ target/universal/isabelle-remix-0.1.0.zip: $(shell find src -type f) $(shell fin
 	sbt dist
 
 run:
-	docker run -p 5001:9000 -it --rm remix/isabelle isabelle-remix
+	docker run -p 5001:9000 -it --rm remix/isabelle

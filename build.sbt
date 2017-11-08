@@ -9,3 +9,7 @@ routesGenerator := InjectedRoutesGenerator
 
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "3.1.2" % Test
 libraryDependencies += guice
+
+// We do not need documentation thanks to noweb
+sources in (Compile, doc) := Seq.empty
+publishArtifact in (Compile, packageDoc) := false
