@@ -1,0 +1,414 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage{noweb}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{stmaryrd}
+\usepackage{tikz}
+\usepackage{siunitx}
+\usepackage{lineno,hyperref}
+\usepackage[inline]{enumitem}
+\usepackage{xifthen}
+\modulolinenumbers[5]
+
+\bibliographystyle{acm}
+
+\newenvironment{keyword}{%
+  \vspace{1em}
+  \fontsize{8pt}{7pt}\selectfont
+  \newcommand{\sep}{, }%
+  \noindent\textbf{Keywords:}\,
+}{}
+
+\newcommand{\ReMix}{{\sc ReMix}}
+\newcommand{\powerset}[1]{\mathcal{P}\left(#1\right)}
+\newcommand{\statements}[1]{\mathcal{S}\left(#1\right)}
+\newcommand{\goals}[1][]{\mathcal{G}\ifthenelse{\isempty{#1}}{}{\left\lbrack#1\right\rbrack}}
+\newcommand{\defntn}[1]{\mathcal{D}\left(#1\right)}
+\newcommand{\lang}{\mathcal{L}}
+
+\newcommand{\hypoth}[1]{\llbracket #1 \rrbracket}
+\newcommand{\stmt}[1]{\text\guillemotleft #1 \text\guillemotright}
+
+\newenvironment{aside}{%
+  \newsavebox{\mybox}
+  \begin{lrbox}{\mybox}%
+}{%
+  \end{lrbox}
+  \begin{center}
+    \fbox{\parbox{0.8\textwidth}{\paragraph*{Aside} \usebox{\mybox}}}
+  \end{center}
+}
+
+\begin{document}
+  \title{Isabelle/\ReMix}
+  \author{Aaron Stockdill\\Department of Computer Science and Technology\\University of Cambridge\\United Kingdom\\\texttt{aaron.stockdill@cl.cam.ac.uk}}
+  \maketitle
+
+  \begin{abstract}
+    TODO: Provide a short overview of the whole paper.
+  \end{abstract}
+
+  \begin{keyword}
+    Heterogeneous reasoning\sep automated theorem proving\sep representations\sep interactive theorem proving\sep diagrammatic reasoning
+  \end{keyword}
+
+  \linenumbers
+
+  \section{Introduction}
+
+  Isabelle/\ReMix{} is a plug-in for the \ReMix{} heterogeneous problem solving environment.
+  It provides a reasoning service, a rule service, a language service, and a rendering service,
+  each linking in to the Isabelle/Pure system.
+  This document both specifies and implements version 0.1.0 of the Isabelle/\ReMix{} API.\@
+<<version>>=
+0.1.0
+@
+
+  TODO: Provide more of an introduction.
+
+  \section{A \ReMix{} plug-in}
+  A \ReMix{} plug-in provides a RESTful API, so for each service we must define a route.
+  To keep the API access-points ``safe'', we will place them under an \texttt{/api/<version>} scope.
+  A plug-in should provide this information at the top level, or near enough.
+  For us, this means we need to direct [[/api]] to a handler that will provide some basic information about the plug-in.
+<<resources/routes>>=
+<<Service routing>>
+GET /api    isabelle_remix.controllers.IsabelleController.pluginInformation
+@
+  \noindent Note that this entry must go \emph{last}, because otherwise this would capture all more specific routes.
+  Conceptually, this file is parsed top-to-bottom and matched greedily.
+  If there is a GET query to \texttt{/api/v0.1.0/languages}, it would match this route;
+  of course, there is likely to be a more specific controller available.
+
+  Because this is the first time we are seeing the [[routes]] file, we should specify how to ``untangle'' it.
+<<Makefile build entry>>=
+notangle -Rresources/routes $< > main/resources/routes
+@
+
+  The controller itself is, for our purposes, very simple.
+  \ReMix{} relies heavily on the Play Framework, and we will also be using it here.
+  However, there is no reason to think that plug-ins must be Scala-based or use the Play Framework---%
+  so long as the correct REST API is presented, the program will function normally.
+<<controllers/IsabelleController.scala>>=
+package isabelle_remix.controllers
+
+<<Controller imports>>
+
+class IsabelleController @Inject()(cc: ControllerComponents)
+    extends AbstractController(cc)
+{
+  <<Response with information about the Isabelle plug-in>>
+}
+@
+  \noindent The class is all but trivial.
+  The Play Framework means the class definition requires injectors and traits,
+  but the idea is simple: this is a controller.
+
+  Again, we define how to untangle the [[IsabelleController.scala]] file.
+<<Makefile build entry>>=
+notangle -Rcontrollers/IsabelleController.scala $< > main/scala/controllers/IsabelleController.scala
+@
+
+  When creating the response, there are several pieces we need to provide:
+  \begin{enumerate}[label=(\roman*)]
+  \item A plug-in ID, which we will define as \texttt{com.isabelle},
+  \item A name, which is quite simply \texttt{Isabelle},
+  \item A website; ideally we would point to the website for the plug-in,
+    but for now we will make do with \url{http://isabelle.in.tum.de},
+  \item The version number,
+  \item An icon (set to [[None]] for now),
+  \item A short description, for example
+<<Plug-in description>>=
+The Isabelle Theorem Prover is a
+generic higher-order theorem prover
+working with a sentential representation.
+@
+  \item A ``base'' from which all future API calls should be directed,
+    here set to \texttt{http://aarons-macbook.local:5001/api/v}\textit{$\langle$version$\rangle$} for easy testing, and
+  \item Finally, a map from service names to API points.
+  \end{enumerate}
+
+  Putting this all together, we have
+<<Response with information about the Isabelle plug-in>>=
+def pluginInformation() = Action { implicit request: Request[AnyContent] =>
+  Ok(JsArray(Array(Json.obj(
+    "result" -> "success",
+    "plugin" -> "com.isabelle",
+    "name" -> "Isabelle",
+    "description" -> """<<Plug-in description>>""".replaceAll("\\s+", " "),
+    "website" -> "http://isabelle.in.tum.de/",
+    "version" -> "<<version>>",
+    "icon" -> "None",
+    "base" -> "http://aarons-macbook.local:5001/api/v<<version>>",
+    "provides" -> Json.obj(
+      <<Service access points>>
+    )
+  ))))
+}
+@
+
+  \section{Connecting to Isabelle}
+  Now that the plug-in can be registered with \ReMix{},
+  we should consider getting our own house in order:
+  namely, how does this plug-in connect to Isabelle?
+  For this plug-in, the answer is via the Isabelle/Pure Scala interface.
+  This communication will happen in an Isabelle class acting as a model for all the controllers,
+  and even then it is a rather basic model,
+  serving only as an abstraction from the controllers to the Isabelle/Scala process.
+
+<<models/Isabelle.scala>>=
+package isabelle_remix.models
+
+<<Model imports>>
+
+object Isabelle
+{
+  <<Model static attributes>>
+  <<Create the connection to Isabelle>>
+  <<Send and receive messages from Isabelle>>
+}
+@
+  \noindent And the untangling instruction:
+<<Makefile build entry>>=
+notangle -Rmodels/Isabelle.scala $< > main/scala/models/Isabelle.scala
+@
+
+<<Model static attributes>>=
+
+@
+
+<<Create the connection to Isabelle>>=
+
+@
+
+<<Send and receive messages from Isabelle>>=
+
+@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  This completes the basic set-up of the Isabelle/\ReMix{} plug-in:
+  we have successfully formed a connection from \ReMix{} to Isabelle/\ReMix{},
+  and a connection from Isabelle/\ReMix{} to Isabelle.
+  All that remains to do is connect these two outward-facing protocols together as services:
+  subsequent sections detail the \ReMix{} services that this plug-in provides.
+
+
+
+  \section{The ``Isabelle'' Language}
+
+  Isabelle works with a sentential representation
+  that is an idiosyncratic mixture between the \emph{metalanguage} and \emph{object languages}.
+  This means that Isabelle does not support a single language, but a whole class of languages;
+  for simplicity, we will summarise them simply as the Isabelle language.
+  Such a complex language has no simple definition of ``validity'',
+  but we do not need to care: we are simply wrapping around Isabelle/Pure,
+  and it does have a definition of what it means to be a valid sentence.
+  We will register this service at the \texttt{/language} access point,
+  although there is no requirement to use this name.
+<<Service access points>>=
+"language" -> "/language"
+@
+
+  Before we get ahead of ourselves, we first define a controller for the languages service.
+  Like the base controller, this is not conceptually complicated.
+  The languages service does two things:
+  \begin{enumerate*}[label=(\roman*)]
+  \item it announces the language that this plug-in works in; and
+  \item it verifies whether a statement is valid in this plug-in's language.
+  \end{enumerate*}
+<<controllers/LanguageController.scala>>=
+package isabelle_remix.controllers
+
+<<Controller imports>>
+
+class LanguageController @Inject()(cc: ControllerComponents)
+    extends AbstractController(cc)
+{
+  <<Understood languages>>
+  <<Validate the submitted statement>>
+}
+@
+  \noindent And to untangle the language controller we use:
+<<Makefile build entry>>=
+notangle -Rcontrollers/LanguageController.scala $< > main/scala/controllers/LanguageController.scala
+@
+
+  \subsection{Understood languages}
+  To notify \ReMix{} about the languages that a plug-in can take as input,
+  it must respond to a top-level \texttt{languages} request with a JSON object
+  where the key \texttt{"request"} maps to a list of language IDs,
+  each encoded as strings.
+  In this same response, we can also notify \ReMix{} about which languages
+  the plug-in might return results in using the key \texttt{"response"},
+  again mapping to a list of language IDs.
+
+<<Service routing>>=
+<<Language verification routing>>
+<<Routing to get information about a language>>
+GET /api/v<<version>>/language isabelle_remix.controllers.LanguageController.understoodLanguages
+@
+
+<<Understood languages>>=
+def understoodLanguages() = Action { implicit request: Request[AnyContent] =>
+  Ok(Json.obj(
+    "result" -> "success",
+    "request" -> Set("lang.isabelle"),
+    "response" -> Set("lang.isabelle")
+  ))
+}
+
+<<Information about this language>>
+@
+
+  For Isabelle/\ReMix{} this is very simple.
+  Some plug-ins, particularly those capable of translation, will have significantly more options.
+
+  Because a user is not necessarily familiar with your plug-in or the languages it uses,
+  you should provide a short description about these languages.
+  A name and a short description are all that are required for each language.
+
+<<Routing to get information about a language>>=
+GET /api/v<<version>>/language/:langID/about isabelle_remix.controllers.LanguageController.aboutLanguage(langID)
+@
+
+<<Information about this language>>=
+def aboutLanguage(langID: String) = Action { implicit request: Request[AnyContent] =>
+  if (langID == "lang.isabelle") {
+    Ok(Json.obj(
+      "result" -> "success",
+      "language" -> "lang.isabelle",
+      "name" -> "Isabelle Sentential Language",
+      "description" -> "The language used by the Isabelle Theorem Prover."
+    ))
+  } else {
+    BadRequest(Json.obj(
+      "result" -> "failure",
+      "reason" -> s"Unknown language: ${langID}"
+    ))
+  }
+}
+@
+
+  If your plug-in is not the ``canonical'' source of a language
+  (for example, you simply provide translations to or from this language),
+  rather than respond with a name and description,
+  respond with the key \texttt{"origin"}, where the value is the ID\ of the plug-in that ``owns'' this language.
+
+  \subsection{Language verification}
+  Isabelle/\ReMix{} is able to lean on existing
+
+<<Language verification routing>>=
+
+@
+
+<<Validate the submitted statement>>=
+
+@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  \clearpage
+  \appendix
+
+  \section{Makefile for this plug-in}
+
+  It is worthwhile providing a Makefile for this project, simply because it is quite complex.
+  Because the definition for building the PDF is simple, we provide it here.
+  The individual source files are introduced at various points in this document,
+  so ``tangling'' is defined at the same place.
+  This Makefile is extracted by the Makefile one directory above this, so it should all be built automatically.
+  If for some reason it is not, please run
+\begin{verbatim}
+notangle -RMakefile IsabelleReMix.scala-nw | unexpand --first-only > Makefile
+\end{verbatim}
+  and then \texttt{make}. Possible targets (which are both made by default) are \texttt{source} and \texttt{pdf}.
+
+<<Makefile>>=
+.PHONY: all
+all: source pdf
+
+.PHONY: clean
+clean:
+	rm -rf auto
+	latexmk -C -f
+	rm IsabelleReMix.tex
+	rm -rf main
+
+.PHONY: directories
+directories:
+	mkdir -p main/resources
+	mkdir -p main/scala/controllers
+	mkdir -p main/scala/models
+
+pdf: IsabelleReMix.scala-nw
+	noweave -delay $< > IsabelleReMix.tex
+	latexmk -pdf
+
+source: IsabelleReMix.scala-nw directories
+	<<Makefile build entry>>
+@
+
+
+\section{Allowing access via any URL}
+The following is dangerous, but useful.
+<<resources/application.conf>>=
+play.filters.disabled+=play.filters.hosts.AllowedHostsFilter
+@
+<<Makefile build entry>>=
+notangle -Rresources/application.conf $< > main/resources/application.conf
+@
+
+
+\section{Miscellaneous definitions}
+
+<<Controller imports>>=
+import javax.inject._
+import play.api._
+import play.api.mvc._
+import play.api.libs.json._
+
+import isabelle_remix.models._
+@
+
+<<Model imports>>=
+import isabelle._
+@
+
+\end{document}
