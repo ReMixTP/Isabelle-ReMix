@@ -1,6 +1,7 @@
 \documentclass[10pt,a4paper]{article}
 \usepackage{noweb}
 \usepackage[T1]{fontenc}
+\usepackage{fontspec}
 \usepackage{amsmath}
 \usepackage{amsthm}
 \usepackage{amssymb}
@@ -11,6 +12,8 @@
 \usepackage[inline]{enumitem}
 \usepackage{xifthen}
 \modulolinenumbers[5]
+
+\setmonofont{Menlo}[Scale=0.75]
 
 \bibliographystyle{acm}
 
@@ -47,19 +50,25 @@
 \maketitle
 
 \begin{abstract}
-  TODO: Provide a short overview of the whole paper.
+  Isabelle/\ReMix{} is a plug-in to the \ReMix{} system.
+  It serves two purposes:
+  first, it serves as a powerful reasoner for the \ReMix{} system to lean on;
+  second, the stucture of the plug-in serves as a guide for how to extend \ReMix{}.
+  This document acts as a record of how the Isabelle/\ReMix{} plug-in was designed and built.
 \end{abstract}
 
 \begin{keyword}
-  Heterogeneous reasoning\sep automated theorem proving\sep representations\sep interactive theorem proving\sep diagrammatic reasoning
+  Heterogeneous reasoning\sep automated theorem proving\sep representations\sep interactive theorem proving\sep diagrammatic reasoning\sep Isabelle
 \end{keyword}
-
-\linenumbers
 
 \section{Introduction}
 
-Isabelle/\ReMix{} is a plug-in for the \ReMix{} heterogeneous problem solving environment.
-It provides a reasoning service, a rule service, a language service, and a rendering service,
+Isabelle/\ReMix{} is a plug-in for the \ReMix{}
+heterogeneous problem solving environment, providing
+a reasoning service,
+a rule service,
+a language service,
+and a rendering service,
 each linking in to the Isabelle/Pure system.
 This document both specifies and implements version 0.1.0 of the Isabelle/\ReMix{} API.\@
 <<version>>=
@@ -69,18 +78,25 @@ This document both specifies and implements version 0.1.0 of the Isabelle/\ReMix
 TODO: Provide more of an introduction.
 
 \section{A \ReMix{} plug-in}
-A \ReMix{} plug-in provides a RESTful API, so for each service we must define a route.
-To keep the API access-points ``safe'', we will place them under an \texttt{/api/<version>} scope.
-A plug-in should provide this information at the top level, or near enough.
-For us, this means we need to direct [[/api]] to a handler that will provide some basic information about the plug-in.
+A \ReMix{} plug-in provides a RESTful API,
+so for each service we must define a route.
+To keep the API access-points ``safe'',
+we will place them under an \texttt{/api/<version>} scope.
+A plug-in should provide this information at the top level,
+above versioning protection:
+this allows multiple versions of a plug-in.
+This means directing [[/api]] to a handler
+that will provide some basic information about the plug-in.
 <<resources/routes>>=
 <<Service routing>>
 GET /api    isabelle_remix.controllers.IsabelleController.pluginInformation
 @
-@ Note that this entry must go \emph{last}, because otherwise this would capture all more specific routes.
+@ Note that this entry must go \emph{last}:
+otherwise this rule captures all more specific routes.\footnote{
 Conceptually, this file is parsed top-to-bottom and matched greedily.
 If there is a GET query to \texttt{/api/v0.1.0/languages}, it would match this route;
 of course, there is likely to be a more specific controller available.
+}
 
 Because this is the first time we are seeing the [[routes]] file, we should specify how to ``untangle'' it.
 <<Makefile build entry>>=
@@ -89,8 +105,10 @@ notangle -Rresources/routes $< > main/resources/routes
 
 The controller itself is, for our purposes, very simple.
 \ReMix{} relies heavily on the Play Framework, and we will also be using it here.
-However, there is no reason to think that plug-ins must be Scala-based or use the Play Framework---%
-so long as the correct REST API is presented, the program will function normally.
+However, there is no reason to think that plug-ins
+must be Scala-based or use the Play Framework---%
+so long as the correct REST API is presented,
+\ReMix{} can successfully use the plug-in.
 <<controllers/IsabelleController.scala>>=
 package isabelle_remix.controllers
 
@@ -102,61 +120,65 @@ class IsabelleController @Inject()(cc: ControllerComponents)
   <<Response with information about the Isabelle plug-in>>
 }
 @
-@ The class is all but trivial.
-  The Play Framework means the class definition requires injectors and traits,
-  but the idea is simple: this is a controller.
+@ The class is very small and to the point;
+not much happens at this top level, so let us not over-complicate things.
 
-  Again, we define how to untangle the [[IsabelleController.scala]] file.
+Again, we define how to untangle the [[IsabelleController.scala]] file.
 <<Makefile build entry>>=
 notangle -Rcontrollers/IsabelleController.scala $< > main/scala/controllers/IsabelleController.scala
 @
 
-  When creating the response, there are several pieces we need to provide:
-  \begin{enumerate}[label=(\roman*)]
-  \item A plug-in ID, which we will define as \texttt{com.isabelle},
-  \item A name, which is quite simply \texttt{Isabelle},
-  \item A website; ideally we would point to the website for the plug-in,
-    but for now we will make do with \url{http://isabelle.in.tum.de},
-  \item The version number,
-  \item An icon (set to [[None]] for now),
-  \item A short description, for example
+The response must include:
+\begin{enumerate}[label=(\roman*)]
+\item A plug-in ID, which we will define as \texttt{com.isabelle},
+\item A name, here \texttt{Isabelle},
+\item A website; ideally we would point to the website for the plug-in,
+  but for now we will make do with \url{http://isabelle.in.tum.de},
+\item The version number,
+\item An icon (set to [[None]] for now),
+\item A short description, for example
 <<Plug-in description>>=
 The Isabelle Theorem Prover is a
 generic higher-order theorem prover
 working with a sentential representation.
 @
-  \item A ``base'' from which all future API calls should be directed,
-    here set to \texttt{http://aarons-macbook.local:5001/api/v}\textit{$\langle$version$\rangle$} for easy testing, and
-  \item Finally, a map from service names to API points.
-  \end{enumerate}
+\item A ``base'' from which all future API calls should be directed,
+  here set to
+  \texttt{http://aarons-macbook.local:5001/api/v}\textit{$\langle$version$\rangle$}
+  for easy testing, and
+\item Finally, a map from service names to API points.
+\end{enumerate}
 
-  Putting this all together, we have
+Putting this all together, we have
 <<Response with information about the Isabelle plug-in>>=
 def pluginInformation() = Action { implicit request: Request[AnyContent] =>
   Ok(JsArray(Array(Json.obj(
     "result" -> "success",
-    "plugin" -> "com.isabelle",
-    "name" -> "Isabelle",
-    "description" -> """<<Plug-in description>>""".replaceAll("\\s+", " "),
-    "website" -> "http://isabelle.in.tum.de/",
-    "version" -> "<<version>>",
-    "icon" -> "None",
-    "base" -> "http://aarons-macbook.local:5001/api/v<<version>>",
-    "provides" -> Json.obj(
-      <<Service access points>>
+    "plugin" -> Json.obj(
+      "id" -> "com.isabelle",
+      "name" -> "Isabelle",
+      "description" -> """<<Plug-in description>>""".replaceAll("\\s+", " "),
+      "website" -> "http://isabelle.in.tum.de/",
+      "version" -> "<<version>>",
+      "icon" -> "None",
+      "base" -> "http://aarons-macbook.local:5001/api/v<<version>>",
+      "provides" -> Json.obj(
+        <<Service access points>>
+      )
     )
   ))))
 }
 @
 
-  \section{Connecting to Isabelle}
-  Now that the plug-in can be registered with \ReMix{},
-  we should consider getting our own house in order:
-  namely, how does this plug-in connect to Isabelle?
-  For this plug-in, the answer is via the Isabelle/Pure Scala interface.
-  This communication will happen in an Isabelle class acting as a model for all the controllers,
-  and even then it is a rather basic model,
-  serving only as an abstraction from the controllers to the Isabelle/Scala process.
+\section{Connecting to Isabelle}
+Now that the plug-in can be registered with \ReMix{},
+we must consider the opposite direction:
+how does this it connect to Isabelle?
+For this plug-in, the answer is via the Isabelle batch compiler.
+This communication will happen in an Isabelle class
+acting as a model for all the controllers,
+and even then it is a rather basic model,
+serving only as an abstraction from the controllers to the Isabelle process.
 
 <<models/Isabelle.scala>>=
 package isabelle_remix.models
@@ -165,25 +187,135 @@ package isabelle_remix.models
 
 object Isabelle
 {
-  <<Model static attributes>>
-  <<Create the connection to Isabelle>>
   <<Send and receive messages from Isabelle>>
+  <<Prepare specific kinds of messages for Isabelle>>
 }
 @ And the untangling instruction:
 <<Makefile build entry>>=
 notangle -Rmodels/Isabelle.scala $< > main/scala/models/Isabelle.scala
 @
 
-<<Model static attributes>>=
-
-@
-
-<<Create the connection to Isabelle>>=
-
-@
-
+Communication with the Isabelle compiler is quite straightforward.
+There are three key steps:
+saving out the theory we are working with,
+running the compiler on it,
+and extracting the resulting messages.
 <<Send and receive messages from Isabelle>>=
+def exec(theory: String): String = {
+  <<Save the theory to a temporary file>>
+  <<Obtain the result of running the isabelle batch compiler>>
+  <<Tidy the result and return it>>
+}
+@
 
+First, saving the theory to a temporary file.
+We give it a helpful prefix of ``remix'' and suffix of ``.thy'',
+so that Isabelle can work with it easier.
+<<Save the theory to a temporary file>>=
+val tempFile = File.createTempFile("remix", ".thy");
+val writer = new PrintWriter(tempFile)
+val filename = tempFile.getName.replace(".thy", "")
+val workdir = tempFile.getParent
+writer.write(s"""theory ${filename} imports Main begin
+                |${theory}
+                |end""".stripMargin)
+writer.close()
+@
+@ By default in Java, temporary files are not deleted when closed.
+Normally this is an issue, but here we exploit that fact:
+if it was deleted when closed, Isabelle would have no chance to process it.
+
+Thanks to Scala's [[sys.process]] library,
+running the Isabelle batch compiler is trivial.
+Simply write the script as a string, and postfix call [[!!]].
+<<Obtain the result of running the isabelle batch compiler>>=
+val result = s"bash /isabelleRunner.sh ${workdir}/${filename}" !!
+@
+
+Finally, in order to prevent the front-end having to do too much work
+to tidy up the Isabelle output,
+we do some filtering now.
+Specifically, we only want to take lines with [[***]] in front,
+which we will then strip away.\footnote{
+  Isabelle's batch compiler has a habbit of printing the error messages twice.
+  I do not know why this is, but it is unhelpful.
+  Worst, it is inconsistent. Sometimes it presents the message twice, othertimes just once.
+}
+<<Tidy the result and return it>>=
+val messageLines = result.split("\n")
+                         .filter{_.startsWith("***")}
+                         .map{_.substring("*** ".length)}
+val firstHalf = messageLines.take(messageLines.length/2)
+val secondHalf = messageLines.drop(messageLines.length/2)
+if (firstHalf == secondHalf) {
+  return firstHalf.mkString("\n")
+} else {
+  return messageLines.mkString("\n")
+}
+@
+@ With that, the Isabelle communication channel is available.
+
+<<Extract new goals from error message>>=
+def extractGoals(output: String): Either[String, Seq[String]] = {
+  // Somehow parse an Isabelle output string into goals, or an error message
+  val hasGoals = raw"^goal \((\d+) subgoals?\):".r
+  output match {
+    case hasGoals(goalCount) => {
+      <<Read in the individual goals>>
+      return Right(goals) // Goals extracted!
+    }
+    case "" => {
+      // Output empty, clean run!
+      return Right(Seq[String]())
+    }
+    case _ => {
+      return Left(output) // We tried...
+    }
+  }
+}
+@
+
+<<Read in the individual goals>>=
+val lines = output.split("\n")
+var extracting = false
+val goals: ArrayBuffer[String] = new ArrayBuffer()
+var goalNumber = 0
+var goal = ""
+for (line <- lines) {
+  if (extracting) {
+    if (line.startsWith("At command")) {
+      goals.append(goal)
+      goal = ""
+      extracting = false
+    } else {
+      if (line.startsWith(s" ${goalNumber+1}. ")) {
+        // Starting a new goal
+        if (goalNumber > 0) {
+          goals.append(goal)
+          goal = ""
+        }
+        goalNumber += 1
+      }
+      goal += line.replace(s" ${goalNumber+1}. ", "")
+    }
+  } else {
+    if (line.startsWith(s"goal ($goalCount subgoal")) {
+      extracting = true
+    }
+  }
+}
+@
+
+<<Prepare specific kinds of messages for Isabelle>>=
+<<Extract new goals from error message>>
+
+def automaticSolving(goal: String): Either[String, Seq[String]] = {
+  return extractGoals(exec(s"""lemma "$goal" by auto"""))
+}
+
+def manualSolving(goal: String, proof: String): Either[String, Seq[String]] = {
+  return extractGoals(exec(s"""lemma "$goal"\n$proof"""))
+}
 @
 
 
@@ -209,38 +341,40 @@ notangle -Rmodels/Isabelle.scala $< > main/scala/models/Isabelle.scala
 
 
 
+This completes the basic set-up of the Isabelle/\ReMix{} plug-in:
+we have successfully formed a connection from \ReMix{} to Isabelle/\ReMix{},
+and a connection from Isabelle/\ReMix{} to Isabelle.
+All that remains to do is connect these two outward-facing protocols together
+as services:
+subsequent sections detail the \ReMix{} services that this plug-in provides.
 
 
-  This completes the basic set-up of the Isabelle/\ReMix{} plug-in:
-  we have successfully formed a connection from \ReMix{} to Isabelle/\ReMix{},
-  and a connection from Isabelle/\ReMix{} to Isabelle.
-  All that remains to do is connect these two outward-facing protocols together as services:
-  subsequent sections detail the \ReMix{} services that this plug-in provides.
 
+\section{The ``Isabelle'' Language}
 
-
-  \section{The ``Isabelle'' Language}
-
-  Isabelle works with a sentential representation
-  that is an idiosyncratic mixture between the \emph{metalanguage} and \emph{object languages}.
-  This means that Isabelle does not support a single language, but a whole class of languages;
-  for simplicity, we will summarise them simply as the Isabelle language.
-  Such a complex language has no simple definition of ``validity'',
-  but we do not need to care: we are simply wrapping around Isabelle/Pure,
-  and it does have a definition of what it means to be a valid sentence.
-  We will register this service at the \texttt{/language} access point,
-  although there is no requirement to use this name.
+Isabelle works with a sentential representation
+that is an idiosyncratic mixture between
+the \emph{metalanguage} and \emph{object languages}.
+This means that Isabelle does not support a single language,
+but a whole class of languages;
+for simplicity, we will summarise them simply as the Isabelle language.
+Such a complex language has no simple definition of ``validity'',
+but we do not need to care: we are simply wrapping around Isabelle/Pure,
+and it does have a definition of what it means to be a valid sentence.
+We will register this service at the \texttt{/language} access point,
+although there is no requirement to use this name.
 <<Service access points>>=
-"language" -> "/language"
+"language" -> "/language",
 @
 
-  Before we get ahead of ourselves, we first define a controller for the languages service.
-  Like the base controller, this is not conceptually complicated.
-  The languages service does two things:
-  \begin{enumerate*}[label=(\roman*)]
-  \item it announces the language that this plug-in works in; and
-  \item it verifies whether a statement is valid in this plug-in's language.
-  \end{enumerate*}
+Before we get ahead of ourselves,
+we first define a controller for the languages service.
+Like the base controller, this is not conceptually complicated.
+The languages service does two things:
+\begin{enumerate*}[label=(\roman*)]
+\item it announces the language that this plug-in works in; and
+\item it verifies whether a statement is valid in this plug-in's language.
+\end{enumerate*}
 <<controllers/LanguageController.scala>>=
 package isabelle_remix.controllers
 
@@ -252,6 +386,7 @@ class LanguageController @Inject()(cc: ControllerComponents)
   <<Understood languages>>
   <<Validate the submitted statement>>
 }
+@
 @ And to untangle the language controller we use:
 <<Makefile build entry>>=
 notangle -Rcontrollers/LanguageController.scala $< > main/scala/controllers/LanguageController.scala
@@ -285,7 +420,8 @@ def understoodLanguages() = Action { implicit request: Request[AnyContent] =>
 @
 
 For Isabelle/\ReMix{} this is very simple.
-Some plug-ins, particularly those capable of translation, will have significantly more options.
+Some plug-ins, particularly those capable of translation,
+will present significantly more languages.
 
 Because a user is not necessarily familiar with your plug-in or the languages it uses,
 you should provide a short description about these languages.
@@ -316,7 +452,8 @@ def aboutLanguage(langID: String) = Action { implicit request: Request[AnyConten
 If your plug-in is not the ``canonical'' source of a language
 (for example, you simply provide translations to or from this language),
 rather than respond with a name and description,
-respond with the key \texttt{"origin"}, where the value is the ID\ of the plug-in that ``owns'' this language.
+respond with the key \texttt{"origin"},
+where the value is the ID\ of the plug-in that ``owns'' this language.
 
 \subsection{Language verification}
 Isabelle/\ReMix{} is able to lean on existing
@@ -341,17 +478,130 @@ Isabelle/\ReMix{} is able to lean on existing
 
 
 
+\section{Reasoning with Isabelle}
+The plug-in is of little use if it cannot be used to perform reasoning.
+In this section,
+Isabelle/\ReMix{} is extended to present both manual and automatic reasoning rules
+to the \ReMix{} core (and subsequently on to the user).
+
+First, we must decide where we will expose the [[reason]] endpoints.
+The verb [[reason]] seems clear enough, so we may as well use that.
+<<Service access points>>=
+"reason" -> "/reason"
+@
+@ We should also update the routes file to point to a method that will handle this.
+<<Service routing>>=
+<<Routing for reasoning>>
+GET /api/v<<version>>/reason isabelle_remix.controllers.ReasoningController.availableRules
+@
+
+<<controllers/ReasoningController.scala>>=
+package isabelle_remix.controllers
+
+<<Controller imports>>
+
+class ReasoningController @Inject()(cc: ControllerComponents)
+    extends AbstractController(cc)
+{
+  <<List the available rules>>
+  <<Dispatch rule application>>
+  <<Apply the auto rule>>
+  <<Apply a manual rule>>
+}
+@
+<<Makefile build entry>>=
+notangle -Rcontrollers/ReasoningController.scala $< > main/scala/controllers/ReasoningController.scala
+@
+
+<<List the available rules>>=
+def availableRules() = Action { implicit request: Request[AnyContent] =>
+  Ok(Json.obj(
+    "result" -> "success",
+    "reasoning" -> JsArray(List(
+      JsArray(List("lang.isabelle", "automated", "IsabelleAuto",
+        "Allow Isabelle to apply 'auto' to the rule").map(Json.toJson(_)))
+    ))
+  ))
+}
+@
+
+<<Dispatch rule application>>=
+def ruleDispatch(ruleID: String) = Action(parse.json) { implicit request: Request[JsValue] =>
+  ruleID match {
+    case "IsabelleAuto" => Ok(applyAuto(request.body("goal").as[JsObject]))
+    case "IsabelleManual" => Ok(applyManual(request.body("goal").as[JsObject], request.body("extraInfo")))
+  }
+}
+@
+<<Routing for reasoning>>=
+POST /api/v<<version>>/reason/apply isabelle_remix.controllers.ReasoningController.ruleDispatch(id: String ?= "")
+@
+
+<<Apply the auto rule>>=
+def applyAuto(goal: JsObject): JsObject = {
+  val result = Isabelle.automaticSolving(goal("data").as[String])
+  print(s"RESULT: $result")
+  return result match {
+    case Right(newFormulae) => Json.obj(
+      "result" -> "success",
+      "newGoals" -> JsArray(newFormulae.map(makeJson(_, goal)))
+    )
+    case Left(message) => Json.obj(
+      "result" -> "failure",
+      "reason" -> message
+    )
+  }
+}
+
+def makeJson(formula: String, goal: JsObject): JsObject = {
+  return Json.obj(
+    "label" -> goal("label"),
+    "data" -> formula,
+    "language" -> goal("language"),
+    "variables" -> goal("variables"),
+    "placeholders" -> goal("placeholders")
+  )
+}
+@
+
+<<Apply a manual rule>>=
+def applyManual(goal: JsObject, extraInfo: JsValue): JsObject = {
+  val result = Isabelle.manualSolving(goal("data").as[String], extraInfo.as[String])
+  return result match {
+    case Right(newFormulae) => Json.obj(
+      "result" -> "success",
+      "newGoals" -> JsArray(newFormulae.map(makeJson(_, goal)))
+    )
+    case Left(message) => Json.obj(
+      "result" -> "failure",
+      "reason" -> message
+    )
+  }
+}
+@
+
+
+
+
+
+
+
+
+
 
 \clearpage
 \appendix
 
 \section{Makefile for this plug-in}
 
-It is worthwhile providing a Makefile for this project, simply because it is quite complex.
-Because the definition for building the PDF is simple, we provide it here.
+It is worthwhile providing a Makefile for this project,
+simply because it is quite complex to run the \texttt{noweb} commands.
+We also provide a way to produce the PDF documentation.
+
 The individual source files are introduced at various points in this document,
 so ``tangling'' is defined at the same place.
-This Makefile is extracted by the Makefile one directory above this, so it should all be built automatically.
+This Makefile is extracted by the Makefile one directory above this,
+so it should all be built automatically.
 If for some reason it is not, please run
 \begin{verbatim}
 notangle -RMakefile IsabelleReMix.scala-nw | unexpand --first-only > Makefile
@@ -406,7 +656,12 @@ import isabelle_remix.models._
 @
 
 <<Model imports>>=
-import isabelle._
+// import isabelle._
+// import isabelle.Thy_Info
+import akka.actor._
+import sys.process._
+import java.io._
+import scala.collection.mutable._
 @
 
 \end{document}
