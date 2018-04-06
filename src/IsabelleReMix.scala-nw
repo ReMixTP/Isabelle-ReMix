@@ -1,3 +1,4 @@
+% -*- mode: latex; mode: mmm; mmm-noweb-code-mode: scala-mode; -*-
 \documentclass[10pt,a4paper]{article}
 \usepackage{noweb}
 \usepackage[T1]{fontenc}
@@ -18,11 +19,15 @@
 \bibliographystyle{acm}
 
 \newenvironment{keyword}{%
-  \vspace{1em}
+  \begin{center}
+  \begin{minipage}{0.85\textwidth}
   \fontsize{8pt}{7pt}\selectfont
   \newcommand{\sep}{, }%
   \noindent\textbf{Keywords:}\,
-}{}
+}{%
+\end{minipage}
+\end{center}
+}
 
 \newcommand{\ReMix}{{\sc ReMix}}
 \newcommand{\powerset}[1]{\mathcal{P}\left(#1\right)}
@@ -75,7 +80,13 @@ This document both specifies and implements version 0.1.0 of the Isabelle/\ReMix
 0.1.0
 @
 
-TODO: Provide more of an introduction.
+Isabelle is a suitable choice for this ``plug-in example'':
+it is both a valuable reasoner for \ReMix{} to know about,
+and sufficiently complicated to touch on most parts of a \ReMix{} plug-in's architecture.
+Because it is so general-purpose,
+Isabelle is able to solve a wide variety of problems
+without the help of other reasoners.
+@
 
 \section{A \ReMix{} plug-in}
 A \ReMix{} plug-in provides a RESTful API,
@@ -125,7 +136,8 @@ not much happens at this top level, so let us not over-complicate things.
 
 Again, we define how to untangle the [[IsabelleController.scala]] file.
 <<Makefile build entry>>=
-notangle -Rcontrollers/IsabelleController.scala $< > main/scala/controllers/IsabelleController.scala
+notangle -Rcontrollers/IsabelleController.scala $< > \
+	main/scala/controllers/IsabelleController.scala
 @
 
 The response must include:
@@ -153,23 +165,23 @@ Putting this all together, we have
 <<Response with information about the Isabelle plug-in>>=
 def pluginInformation() = Action { implicit request: Request[AnyContent] =>
   Ok(JsArray(Array(Json.obj(
-    "result" -> "success",
-    "plugin" -> Json.obj(
-      "id" -> "com.isabelle",
-      "name" -> "Isabelle",
-      "description" -> """<<Plug-in description>>""".replaceAll("\\s+", " "),
-      "website" -> "http://isabelle.in.tum.de/",
-      "version" -> "<<version>>",
-      "icon" -> "None",
-      "base" -> "http://aarons-macbook.local:5001/api/v<<version>>",
-      "provides" -> Json.obj(
-        <<Service access points>>
-      )
+    "id" -> "com.isabelle",
+    "name" -> "Isabelle",
+    "description" -> """<<Plug-in description>>""".replaceAll("\\s+", " "),
+    "website" -> "http://isabelle.in.tum.de/",
+    "version" -> "<<version>>",
+    "icon" -> "None",
+    "base" -> "http://aarons-macbook.local:5001/api/v<<version>>",
+    "provides" -> Json.obj(
+      <<Service access points>>
     )
   ))))
 }
 @
+@ The \emph{Service access points} will be elaborated on as we go---%
+after all, these are the meat of any plug-in.
 
+@
 \section{Connecting to Isabelle}
 Now that the plug-in can be registered with \ReMix{},
 we must consider the opposite direction:
@@ -389,7 +401,8 @@ class LanguageController @Inject()(cc: ControllerComponents)
 @
 @ And to untangle the language controller we use:
 <<Makefile build entry>>=
-notangle -Rcontrollers/LanguageController.scala $< > main/scala/controllers/LanguageController.scala
+notangle -Rcontrollers/LanguageController.scala $< > \
+	main/scala/controllers/LanguageController.scala
 @
 
 \subsection{Understood languages}
@@ -510,7 +523,8 @@ class ReasoningController @Inject()(cc: ControllerComponents)
 }
 @
 <<Makefile build entry>>=
-notangle -Rcontrollers/ReasoningController.scala $< > main/scala/controllers/ReasoningController.scala
+notangle -Rcontrollers/ReasoningController.scala $< > \
+	main/scala/controllers/ReasoningController.scala
 @
 
 <<List the available rules>>=

@@ -11,4 +11,4 @@ source: src/IsabelleReMix.scala-nw
 	cd src && $(MAKE) source
 
 run:
-	docker run -p 5001:9000 -it --rm remix/isabelle
+	docker run -p 5001:9000 -d --rm remix/isabelle
